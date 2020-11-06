@@ -1,4 +1,4 @@
-module Session exposing (..)
+module Session exposing (Data, Flags, init)
 
 import Browser.Navigation exposing (Key)
 import Url exposing (Url)
@@ -14,28 +14,6 @@ type alias Data =
     }
 
 
-init : Flags -> Url -> Key -> ( Data, Cmd Msg )
-init flags url key =
-    ( Data url key
-    , Cmd.none
-    )
-
-
-
--- UPDATE
-
-
-type Msg
-    = NoOp
-
-
-update : Msg -> Data -> ( Data, Cmd Msg )
-update msg model =
-    case msg of
-        NoOp ->
-            ( model, Cmd.none )
-
-
-subscriptions : Data -> Sub Msg
-subscriptions model =
-    Sub.none
+init : Flags -> Url -> Key -> Data
+init _ url key =
+    Data url key

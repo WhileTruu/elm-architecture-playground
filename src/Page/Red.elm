@@ -1,4 +1,4 @@
-module Page.Home exposing (Model, Msg, page)
+module Page.Red exposing (Model, Msg, page)
 
 import Element exposing (Element)
 import Element.Background
@@ -69,7 +69,7 @@ viewContent model =
     Element.column
         [ Element.width Element.fill
         , Element.height Element.fill
-        , Element.Background.color (Element.rgb255 0 0 0)
+        , Element.Background.color (Element.rgb255 255 0 0)
         , Element.padding 20
         ]
         [ Element.Input.button
@@ -90,10 +90,7 @@ viewContent model =
 
 sheetView : Model -> Sheet.Details Msg
 sheetView model =
-    { attrs =
-        [ Element.width (Element.px 500)
-        , Element.height (Element.px 500)
-        ]
+    { attrs = []
     , kids =
         Element.column
             [ Element.width Element.fill
@@ -111,12 +108,6 @@ sheetView model =
                 { onPress = Just ClickedHideSheet
                 , label = Element.text "My Button"
                 }
-            , Element.link
-                [ Element.Background.color (Element.rgb255 255 255 0)
-                , Element.focused [ Element.Background.color (Element.rgb255 255 0 0) ]
-                , Element.padding 20
-                ]
-                { url = "/", label = Element.text "home" }
             ]
     }
 
@@ -126,7 +117,7 @@ sheetView model =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions model =
     Sub.none
 
 

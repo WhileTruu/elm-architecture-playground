@@ -1,7 +1,6 @@
 module Skeleton exposing
     ( Details
     , Segment
-    , Warning(..)
     , linkSegment
     , map
     , view
@@ -9,7 +8,6 @@ module Skeleton exposing
 
 import Browser
 import Element exposing (Element)
-import Element.Lazy
 import Html exposing (..)
 
 
@@ -20,14 +18,9 @@ import Html exposing (..)
 type alias Details msg =
     { title : String
     , header : List Segment
-    , warning : Warning
+    , attrs : List (Element.Attribute msg)
     , kids : Element msg
     }
-
-
-type Warning
-    = NoProblems
-    | WarnOld
 
 
 
@@ -35,8 +28,7 @@ type Warning
 
 
 type Segment
-    = Text String
-    | Link { url : String, text : String }
+    = Link { url : String, text : String }
 
 
 linkSegment : { url : String, text : String } -> Segment
@@ -58,15 +50,16 @@ view toMsg details =
 body : Details msg -> Html msg
 body details =
     Element.layout
-        [ Element.width Element.fill
-        , Element.height Element.fill
-        ]
+        ([ Element.width Element.fill
+         , Element.height Element.fill
+         ]
+            ++ details.attrs
+        )
         (Element.column
             [ Element.width Element.fill
             , Element.height Element.fill
             ]
             [ viewHeader details.header
-            , Element.Lazy.lazy viewWarning details.warning
             , details.kids
             , viewFooter
             ]
@@ -77,7 +70,7 @@ map : (a -> msg) -> Details a -> Details msg
 map toMsg details =
     { title = details.title
     , header = details.header
-    , warning = details.warning
+    , attrs = details.attrs |> List.map (Element.mapAttribute toMsg)
     , kids = details.kids |> Element.map toMsg
     }
 
@@ -94,40 +87,21 @@ viewHeader segments =
                 [ Element.none ]
 
             _ ->
-                List.intersperse slash (List.map viewSegment segments)
+                List.intersperse pipe (List.map viewSegment segments)
         )
 
 
-slash : Element msg
-slash =
-    Element.text " / "
+pipe : Element msg
+pipe =
+    Element.text " | "
 
 
 viewSegment : Segment -> Element msg
 viewSegment segment =
     case segment of
-        Text string ->
-            Element.text string
-
         Link { url, text } ->
-            Element.link [] { url = url, label = Element.text text }
-
-
-
--- VIEW WARNING
-
-
-viewWarning : Warning -> Element msg
-viewWarning warning =
-    Element.row [] <|
-        case warning of
-            NoProblems ->
-                []
-
-            WarnOld ->
-                [ Element.el []
-                    (Element.text "NOTE — this package is not compatible with Elm 0.19.1")
-                ]
+            Element.link [ Element.padding 20 ]
+                { url = url, label = Element.text text }
 
 
 
@@ -138,7 +112,7 @@ viewFooter : Element msg
 viewFooter =
     Element.row [ Element.padding 10 ]
         [ Element.link []
-            { url = "https://elm-lang.org"
+            { url = "https://duckduckgo.com/?q=unicorn"
             , label = Element.text "Hello I am unicorn."
             }
         , Element.text " - 🦄"

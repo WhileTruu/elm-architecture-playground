@@ -12,6 +12,7 @@ import Url
 -- MAIN
 
 
+main : Program () Model Msg
 main =
     Browser.application
         { init = init
@@ -33,20 +34,14 @@ type alias Model =
     }
 
 
-init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
-init _ url key =
+init : Session.Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url key =
     let
-        ( session, sharedCmd ) =
-            Session.init () url key
-
-        ( page, pageCmd ) =
-            Main.Page.init session
+        session : Session.Data
+        session =
+            Session.init flags url key
     in
-    ( Model session page
-    , Cmd.batch
-        [ Cmd.map PageMsg pageCmd
-        ]
-    )
+    Main.Page.init session |> Tuple.mapBoth (Model session) (Cmd.map PageMsg)
 
 
 
@@ -55,8 +50,7 @@ init _ url key =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Main.Page.subscriptions model.page
-        |> Sub.map PageMsg
+    Sub.map PageMsg (Main.Page.subscriptions model.page)
 
 
 view : Model -> Browser.Document Msg
@@ -84,22 +78,16 @@ update message model =
         LinkClicked urlRequest ->
             case urlRequest of
                 Browser.Internal url ->
-                    ( model
-                    , Nav.pushUrl model.session.key (Url.toString url)
-                    )
+                    ( model, Nav.pushUrl model.session.key (Url.toString url) )
 
                 Browser.External href ->
-                    ( model
-                    , Nav.load href
-                    )
+                    ( model, Nav.load href )
 
         UrlChanged url ->
             let
-                original =
-                    model.session
-
+                session : Session.Data
                 session =
-                    { original | url = url }
+                    model.session |> (\a -> { a | url = url })
 
                 ( page, pageCmd ) =
                     Main.Page.init session
@@ -113,9 +101,10 @@ update message model =
                 ( page, pageCmd ) =
                     Main.Page.update pageMsg model.page
 
-                shared =
+                session : Session.Data
+                session =
                     Main.Page.save page model.session
             in
-            ( { model | page = page, session = shared }
+            ( { model | page = page, session = session }
             , Cmd.map PageMsg pageCmd
             )

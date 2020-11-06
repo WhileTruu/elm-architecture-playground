@@ -1,16 +1,19 @@
 module Page exposing
     ( Page
-    , static, sandbox, element, application
+    , Sheet
+    , static, sandbox, element, application, applicationWithSheet
     )
 
 {-|
 
 @docs Page
-@docs static, sandbox, element, application
+@docs Sheet
+@docs static, sandbox, element, application, applicationWithSheet
 @docs Upgraded, Bundle, upgrade
 
 -}
 
+import Main.Sheet as Sheet
 import Session
 import Skeleton
 
@@ -22,6 +25,14 @@ type alias Page model msg =
     , subscriptions : model -> Sub msg
     , save : model -> Session.Data -> Session.Data
     , load : Session.Data -> model -> ( model, Cmd msg )
+    , sheet : Maybe (Sheet model msg)
+    }
+
+
+type alias Sheet model msg =
+    { show : model -> Bool
+    , view : model -> Sheet.Details msg
+    , onHide : msg
     }
 
 
@@ -36,6 +47,7 @@ static page =
     , subscriptions = \_ -> Sub.none
     , save = always identity
     , load = always (identity >> ignoreEffect)
+    , sheet = Nothing
     }
 
 
@@ -52,6 +64,7 @@ sandbox page =
     , subscriptions = \_ -> Sub.none
     , save = always identity
     , load = always (identity >> ignoreEffect)
+    , sheet = Nothing
     }
 
 
@@ -69,6 +82,7 @@ element page =
     , subscriptions = page.subscriptions
     , save = always identity
     , load = always (identity >> ignoreEffect)
+    , sheet = Nothing
     }
 
 
@@ -82,7 +96,35 @@ application :
     }
     -> Page model msg
 application page =
-    page
+    { init = page.init
+    , update = page.update
+    , view = page.view
+    , subscriptions = page.subscriptions
+    , save = page.save
+    , load = page.load
+    , sheet = Nothing
+    }
+
+
+applicationWithSheet :
+    { init : Session.Data -> ( model, Cmd msg )
+    , update : msg -> model -> ( model, Cmd msg )
+    , view : model -> Skeleton.Details msg
+    , subscriptions : model -> Sub msg
+    , save : model -> Session.Data -> Session.Data
+    , load : Session.Data -> model -> ( model, Cmd msg )
+    , sheet : Sheet model msg
+    }
+    -> Page model msg
+applicationWithSheet page =
+    { init = page.init
+    , update = page.update
+    , view = page.view
+    , subscriptions = page.subscriptions
+    , save = page.save
+    , load = page.load
+    , sheet = Just page.sheet
+    }
 
 
 ignoreEffect : model -> ( model, Cmd msg )

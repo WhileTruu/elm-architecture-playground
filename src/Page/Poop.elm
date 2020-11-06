@@ -1,6 +1,7 @@
 module Page.Poop exposing (..)
 
 import Element
+import Element.Font
 import Page exposing (Page)
 import Session
 import Skeleton
@@ -20,9 +21,7 @@ type alias Msg =
 
 page : Page Model msg
 page =
-    Page.static
-        { view = view
-        }
+    Page.static { view = view }
 
 
 view : Session.Data -> Skeleton.Details msg
@@ -30,11 +29,15 @@ view _ =
     { title = "Home"
     , header =
         [ Skeleton.linkSegment { url = "/", text = "home" }
-        , Skeleton.linkSegment { url = "/home2", text = "home2" }
+        , Skeleton.linkSegment { url = "/red", text = "red" }
         , Skeleton.linkSegment { url = "/poop", text = "poop" }
         ]
-    , warning = Skeleton.NoProblems
+    , attrs = []
     , kids =
-        Element.el [ Element.height Element.fill, Element.width Element.fill ]
+        Element.el
+            [ Element.Font.size 500
+            , Element.centerX
+            , Element.centerY
+            ]
             (Element.text "💩")
     }
