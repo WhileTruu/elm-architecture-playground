@@ -41,7 +41,7 @@ init flags url key =
         session =
             Session.init flags url key
     in
-    Main.Page.init session |> Tuple.mapBoth (Model session) (Cmd.map PageMsg)
+    Main.Page.init session Nothing |> Tuple.mapBoth (Model session) (Cmd.map PageMsg)
 
 
 
@@ -90,9 +90,9 @@ update message model =
                     model.session |> (\a -> { a | url = url })
 
                 ( page, pageCmd ) =
-                    Main.Page.init session
+                    Main.Page.init session (Just model.page)
             in
-            ( { model | page = page, session = Main.Page.save page session }
+            ( { model | page = page }
             , Cmd.map PageMsg pageCmd
             )
 
@@ -103,7 +103,7 @@ update message model =
 
                 session : Session.Data
                 session =
-                    Main.Page.save page model.session
+                    model.session
             in
             ( { model | page = page, session = session }
             , Cmd.map PageMsg pageCmd

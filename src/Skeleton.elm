@@ -1,5 +1,5 @@
 module Skeleton exposing
-    ( Details
+    ( Config(..)
     , Segment
     , linkSegment
     , map
@@ -15,12 +15,14 @@ import Html exposing (..)
 -- NODE
 
 
-type alias Details msg =
-    { title : String
-    , header : List Segment
-    , attrs : List (Element.Attribute msg)
-    , kids : Element msg
-    }
+type Config msg
+    = Details
+        { title : String
+        , header : List Segment
+        , attrs : List (Element.Attribute msg)
+        , kids : Element msg
+        }
+    | Loading
 
 
 
@@ -40,39 +42,61 @@ linkSegment =
 -- VIEW
 
 
-view : (a -> msg) -> Details a -> Browser.Document msg
-view toMsg details =
-    { title = details.title
-    , body = [ body details |> Html.map toMsg ]
-    }
+view : (a -> msg) -> Config a -> Browser.Document msg
+view toMsg config =
+    case config of
+        Details details ->
+            { title = details.title
+            , body = [ body config |> Html.map toMsg ]
+            }
+
+        Loading ->
+            { title = "Loading"
+            , body = [ body config |> Html.map toMsg ]
+            }
 
 
-body : Details msg -> Html msg
-body details =
-    Element.layout
-        ([ Element.width Element.fill
-         , Element.height Element.fill
-         ]
-            ++ details.attrs
-        )
-        (Element.column
-            [ Element.width Element.fill
-            , Element.height Element.fill
-            ]
-            [ viewHeader details.header
-            , details.kids
-            , viewFooter
-            ]
-        )
+body : Config msg -> Html msg
+body config =
+    case config of
+        Details details ->
+            Element.layout
+                ([ Element.width Element.fill
+                 , Element.height Element.fill
+                 ]
+                    ++ details.attrs
+                )
+                (Element.column
+                    [ Element.width Element.fill
+                    , Element.height Element.fill
+                    ]
+                    [ viewHeader details.header
+                    , details.kids
+                    , viewFooter
+                    ]
+                )
+
+        Loading ->
+            Element.layout
+                [ Element.width Element.fill
+                , Element.height Element.fill
+                ]
+                (Element.text "LOADING")
 
 
-map : (a -> msg) -> Details a -> Details msg
-map toMsg details =
-    { title = details.title
-    , header = details.header
-    , attrs = details.attrs |> List.map (Element.mapAttribute toMsg)
-    , kids = details.kids |> Element.map toMsg
-    }
+map : (a -> msg) -> Config a -> Config msg
+map toMsg config =
+    case config of
+        Details details ->
+            Details
+                { title = details.title
+                , header = details.header
+                , attrs = details.attrs |> List.map (Element.mapAttribute toMsg)
+                , kids = details.kids |> Element.map toMsg
+                }
+
+        Loading ->
+            Loading
 
 
 

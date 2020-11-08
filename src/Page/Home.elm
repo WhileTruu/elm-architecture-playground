@@ -4,7 +4,7 @@ import Element exposing (Element)
 import Element.Background
 import Element.Input
 import Main.Sheet as Sheet
-import Page exposing (Page)
+import Page exposing (NonLoadingPage, Page)
 import Skeleton
 
 
@@ -51,13 +51,14 @@ update msg model =
 -- VIEW
 
 
-view : Model -> Skeleton.Details Msg
+view : Model -> Skeleton.Config Msg
 view model =
-    { title = "Home"
-    , header = []
-    , attrs = []
-    , kids = viewContent model
-    }
+    Skeleton.Details
+        { title = "Home"
+        , header = []
+        , attrs = []
+        , kids = viewContent model
+        }
 
 
 viewContent : Model -> Element Msg
@@ -130,15 +131,12 @@ subscriptions _ =
 -- PAGE
 
 
-page : Page Model Msg
+page : NonLoadingPage Model Msg
 page =
     Page.applicationWithSheet
         { init = \_ -> init
         , view = view
         , update = update
-        , subscriptions = subscriptions
-        , save = \_ a -> a
-        , load = \_ model -> ( model, Cmd.none )
         , sheet = sheet
         }
 

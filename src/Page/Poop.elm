@@ -2,7 +2,7 @@ module Page.Poop exposing (..)
 
 import Element
 import Element.Font
-import Page exposing (Page)
+import Page exposing (NonLoadingPage, Page)
 import Session
 import Skeleton
 
@@ -19,21 +19,22 @@ type alias Msg =
 -- PAGE
 
 
-page : Page Model msg
+page : NonLoadingPage Model Msg
 page =
     Page.static { view = view }
 
 
-view : Session.Data -> Skeleton.Details msg
+view : Session.Data -> Skeleton.Config msg
 view _ =
-    { title = "Home"
-    , header = []
-    , attrs = []
-    , kids =
-        Element.el
-            [ Element.Font.size 500
-            , Element.centerX
-            , Element.centerY
-            ]
-            (Element.text "💩")
-    }
+    Skeleton.Details
+        { title = "Home"
+        , header = []
+        , attrs = []
+        , kids =
+            Element.el
+                [ Element.Font.size 500
+                , Element.centerX
+                , Element.centerY
+                ]
+                (Element.text "💩")
+        }

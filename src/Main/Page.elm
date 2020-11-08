@@ -2,18 +2,19 @@ module Main.Page exposing
     ( Model
     , Msg
     , init
-    , load
-    , save
     , subscriptions
     , update
     , view
     )
 
 import Element exposing (Element)
+import Element.Background
 import Main.Sheet as Sheet
 import Page exposing (Page)
 import Page.Home as Home
 import Page.Poop as Poop
+import Page.Preconditions as Pre
+import Page.Preconditions.Loading as PreLoading
 import Page.Red as Red
 import Session
 import Skeleton
@@ -26,20 +27,23 @@ import Url.Parser as Parser exposing (Parser, oneOf, s, top)
 
 type alias Model =
     { sheet : Sheet.Model
+    , previousPage : Maybe PageModel
     , page : PageModel
     }
 
 
 type PageModel
-    = Home__Model Home.Model
-    | Red__Model Red.Model
-    | Poop__Model Poop.Model
+    = Home__Model (Page.Status () Home.Model)
+    | Red__Model (Page.Status () Red.Model)
+    | Poop__Model (Page.Status () Poop.Model)
+    | Pre__Model (Page.Status PreLoading.Model Pre.Model)
 
 
 type Msg
-    = Home__Msg Home.Msg
-    | Red__Msg Red.Msg
-    | Poop__Msg Poop.Msg
+    = Home__Msg (Page.Msg () Home.Msg)
+    | Red__Msg (Page.Msg () Red.Msg)
+    | Poop__Msg (Page.Msg () Poop.Msg)
+    | Pre__Msg (Page.Msg PreLoading.Msg Pre.Msg)
     | SheetMsg Sheet.Msg
 
 
@@ -47,18 +51,23 @@ type Msg
 -- INIT
 
 
-init : Session.Data -> ( Model, Cmd Msg )
-init session =
+init : Session.Data -> Maybe Model -> ( Model, Cmd Msg )
+init session bigModel =
     let
+        pages_ =
+            pages (Maybe.andThen .previousPage bigModel)
+
         parser : Parser (( Model, Cmd Msg ) -> c) c
         parser =
             oneOf
                 [ route top
-                    (pages.home.init session)
+                    (pages_.home.init session)
                 , route (s "red")
-                    (pages.red.init session)
+                    (pages_.red.init session)
                 , route (s "poop")
-                    (pages.poop.init session)
+                    (pages_.poop.init session)
+                , route (s "pre")
+                    (pages_.pre.init session)
                 ]
     in
     case Parser.parse parser session.url of
@@ -66,7 +75,7 @@ init session =
             answer
 
         Nothing ->
-            pages.poop.init session
+            pages_.poop.init session
 
 
 route : Parser a b -> a -> Parser (b -> c) c
@@ -79,6 +88,7 @@ links =
     [ Skeleton.linkSegment { url = "/", text = "home" }
     , Skeleton.linkSegment { url = "/red", text = "red" }
     , Skeleton.linkSegment { url = "/poop", text = "poop" }
+    , Skeleton.linkSegment { url = "/pre", text = "pre" }
     ]
 
 
@@ -88,48 +98,103 @@ links =
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update bigMsg bigModel =
-    case ( bigMsg, bigModel.page ) of
-        ( Home__Msg msg, Home__Model model ) ->
-            pages.home.update msg model bigModel.sheet
+    let
+        pages_ =
+            pages bigModel.previousPage
+    in
+    case bigMsg of
+        Home__Msg msg ->
+            case bigModel.page of
+                Home__Model model ->
+                    pages_.home.update msg model bigModel.sheet
 
-        ( Red__Msg msg, Red__Model model ) ->
-            pages.red.update msg model bigModel.sheet
+                _ ->
+                    ( bigModel, Cmd.none )
 
-        ( Poop__Msg msg, Poop__Model model ) ->
-            pages.poop.update msg model bigModel.sheet
+        Red__Msg msg ->
+            case bigModel.page of
+                Red__Model model ->
+                    pages_.red.update msg model bigModel.sheet
 
-        ( SheetMsg msg, _ ) ->
+                _ ->
+                    ( bigModel, Cmd.none )
+
+        Poop__Msg msg ->
+            case bigModel.page of
+                Poop__Model model ->
+                    pages_.poop.update msg model bigModel.sheet
+
+                _ ->
+                    ( bigModel, Cmd.none )
+
+        Pre__Msg msg ->
+            case bigModel.page of
+                Pre__Model model ->
+                    pages_.pre.update msg model bigModel.sheet
+
+                _ ->
+                    ( bigModel, Cmd.none )
+
+        SheetMsg msg ->
             ( { bigModel | sheet = Sheet.update msg bigModel.sheet }, Cmd.none )
-
-        ( _, _ ) ->
-            ( bigModel, Cmd.none )
 
 
 
 -- BUNDLE - (view + subscriptions)
 
 
-bundle : Model -> Bundle
-bundle bigModel =
-    case bigModel.page of
+bundle : PageModel -> Maybe Bundle
+bundle page =
+    let
+        pages_ =
+            pages (Just page)
+
+        bundleFromModel toBundle model_ =
+            case model_ of
+                Page.Ok model ->
+                    Just (toBundle model)
+
+                Page.Loading _ ->
+                    Nothing
+    in
+    case page of
         Home__Model model ->
-            pages.home.bundle model
+            bundleFromModel pages_.home.bundle model
 
         Red__Model model ->
-            pages.red.bundle model
+            bundleFromModel pages_.red.bundle model
 
         Poop__Model model ->
-            pages.poop.bundle model
+            bundleFromModel pages_.poop.bundle model
+
+        Pre__Model model ->
+            bundleFromModel pages_.pre.bundle model
 
 
-view : Model -> Skeleton.Details Msg
+orElse : Maybe a -> Maybe a -> Maybe a
+orElse ma mb =
+    case mb of
+        Nothing ->
+            ma
+
+        Just _ ->
+            mb
+
+
+view : Model -> Skeleton.Config Msg
 view model =
-    let
-        bundle_ : Bundle
-        bundle_ =
-            bundle model
+    Maybe.map (viewWithBundle model) (bundle model.page)
+        |> orElse
+            (Maybe.andThen bundle model.previousPage
+                |> Maybe.map (viewWithBundle model >> addLoadingOverlayToSkeleton)
+            )
+        |> Maybe.withDefault Skeleton.Loading
 
-        addSheet : Skeleton.Details Msg -> Skeleton.Details Msg
+
+viewWithBundle : Model -> Bundle -> Skeleton.Config Msg
+viewWithBundle model bundle_ =
+    let
+        addSheet : Skeleton.Config Msg -> Skeleton.Config Msg
         addSheet =
             bundle_.sheet ()
                 |> Maybe.map (addSheetToSkeleton model)
@@ -137,70 +202,107 @@ view model =
     in
     bundle_.view ()
         |> addSheet
-        |> (\a -> { a | header = links ++ a.header })
+        |> (\a ->
+                case a of
+                    Skeleton.Details details ->
+                        Skeleton.Details { details | header = links ++ details.header }
+
+                    Skeleton.Loading ->
+                        Skeleton.Loading
+           )
 
 
-addSheetToSkeleton : Model -> Page.Sheet Model msg -> Skeleton.Details msg -> Skeleton.Details msg
-addSheetToSkeleton model sheet skeleton =
-    { skeleton
-        | attrs =
-            Element.inFront
-                (if Sheet.isVisible model.sheet then
-                    Sheet.view model.sheet (sheet.view model) { onClose = sheet.onHide }
+addLoadingOverlayToSkeleton : Skeleton.Config msg -> Skeleton.Config msg
+addLoadingOverlayToSkeleton skeletonConfig =
+    case skeletonConfig of
+        Skeleton.Details details ->
+            Skeleton.Details
+                { details
+                    | attrs =
+                        Element.inFront
+                            (Element.el
+                                [ Element.Background.color (Element.rgba255 255 255 255 0.5)
+                                , Element.width Element.fill
+                                , Element.height Element.fill
+                                ]
+                                Element.none
+                            )
+                            :: details.attrs
+                }
 
-                 else
-                    Element.none
-                )
-                :: skeleton.attrs
-    }
+        Skeleton.Loading ->
+            Skeleton.Loading
+
+
+addSheetToSkeleton :
+    Model
+    -> Page.Sheet Model msg
+    -> Skeleton.Config msg
+    -> Skeleton.Config msg
+addSheetToSkeleton model sheet skeletonConfig =
+    case skeletonConfig of
+        Skeleton.Details details ->
+            Skeleton.Details
+                { details
+                    | attrs =
+                        Element.inFront
+                            (if Sheet.isVisible model.sheet then
+                                Sheet.view model.sheet (sheet.view model) { onClose = sheet.onHide }
+
+                             else
+                                Element.none
+                            )
+                            :: details.attrs
+                }
+
+        Skeleton.Loading ->
+            Skeleton.Loading
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ (bundle model).subscriptions ()
-        , Sheet.subscriptions model.sheet |> Sub.map SheetMsg
+        [ Sheet.subscriptions model.sheet |> Sub.map SheetMsg
         ]
-
-
-save : Model -> Session.Data -> Session.Data
-save model =
-    (bundle model).save ()
-
-
-load : Model -> Session.Data -> ( Model, Cmd Msg )
-load model session =
-    (bundle model).load () session model.sheet
 
 
 
 -- UPGRADING PAGES
 
 
-type alias Upgraded model msg =
+type alias Upgraded loadingModel model loadingMsg msg =
     { init : Session.Data -> ( Model, Cmd Msg )
-    , update : msg -> model -> Sheet.Model -> ( Model, Cmd Msg )
+    , update : Page.Msg loadingMsg msg -> Page.Status loadingModel model -> Sheet.Model -> ( Model, Cmd Msg )
     , bundle : model -> Bundle
     }
 
 
 type alias Bundle =
-    { view : () -> Skeleton.Details Msg
-    , subscriptions : () -> Sub Msg
-    , save : () -> Session.Data -> Session.Data
-    , load : () -> Session.Data -> Sheet.Model -> ( Model, Cmd Msg )
+    { view : () -> Skeleton.Config Msg
     , sheet : () -> Maybe (Page.Sheet Model Msg)
     }
 
 
-upgrade : (model -> PageModel) -> (msg -> Msg) -> Page model msg -> Upgraded model msg
-upgrade toPageModel toMsg page =
+upgrade :
+    Maybe PageModel
+    -> (Page.Status loadingModel model -> PageModel)
+    -> (Page.Msg loadingMsg msg -> Msg)
+    -> Page loadingModel model loadingMsg msg
+    -> Upgraded loadingModel model loadingMsg msg
+upgrade prevPage toPageModel toMsg page =
     let
-        toModel : Sheet.Model -> model -> Model
-        toModel sheetModel =
-            toPageModel
-                >> (\pageModel ->
+        toModel : Sheet.Model -> Page.Status loadingModel model -> Model
+        toModel sheetModel status =
+            toPageModel status
+                |> (\pageModel ->
                         { sheet = sheetModel
+                        , previousPage =
+                            case status of
+                                Page.Loading _ ->
+                                    prevPage
+
+                                Page.Ok _ ->
+                                    Just pageModel
                         , page = pageModel
                         }
                    )
@@ -210,40 +312,47 @@ upgrade toPageModel toMsg page =
             page.init session
                 |> Tuple.mapBoth (toModel Sheet.init) (Cmd.map toMsg)
 
-        update_ : msg -> model -> Sheet.Model -> ( Model, Cmd Msg )
+        update_ : Page.Msg loadingMsg msg -> Page.Status loadingModel model -> Sheet.Model -> ( Model, Cmd Msg )
         update_ msg model sheetModel =
             page.update msg model
                 |> Tuple.mapFirst
                     (\pageModel ->
-                        if page.sheet |> Maybe.map (\{ show } -> show pageModel) |> Maybe.withDefault False then
+                        let
+                            isSheetVisible =
+                                Sheet.isVisible sheetModel
+
+                            showSheet =
+                                case pageModel of
+                                    Page.Ok pageModel_ ->
+                                        page.sheet |> Maybe.map (\{ show } -> show pageModel_) |> Maybe.withDefault False
+
+                                    _ ->
+                                        False
+                        in
+                        if showSheet then
                             toModel (Sheet.show sheetModel) pageModel
 
-                        else
+                        else if isSheetVisible then
                             toModel (Sheet.hide sheetModel) pageModel
+
+                        else
+                            toModel Sheet.init pageModel
                     )
                 |> Tuple.mapSecond (Cmd.map toMsg)
 
         bundle_ : model -> Bundle
         bundle_ model =
             { view = \_ -> page.view model |> Skeleton.map toMsg
-            , subscriptions = \_ -> page.subscriptions model |> Sub.map toMsg
-            , save = \_ -> page.save model
-            , load = \_ -> load_ model
             , sheet = \_ -> sheet_ model
             }
-
-        load_ : model -> Session.Data -> Sheet.Model -> ( Model, Cmd Msg )
-        load_ model shared sheetModel =
-            page.load shared model
-                |> Tuple.mapBoth (toModel sheetModel) (Cmd.map toMsg)
 
         sheet_ : model -> Maybe (Page.Sheet a Msg)
         sheet_ model =
             Maybe.map
                 (\sheet ->
                     { show = \_ -> sheet.show model
-                    , view = \_ -> sheet.view model |> Sheet.map toMsg
-                    , onHide = toMsg sheet.onHide
+                    , view = \_ -> sheet.view model |> Sheet.map (toMsg << Page.OkMsg)
+                    , onHide = (toMsg << Page.OkMsg) sheet.onHide
                     }
                 )
                 page.sheet
@@ -255,12 +364,24 @@ upgrade toPageModel toMsg page =
 
 
 pages :
-    { home : Upgraded Home.Model Home.Msg
-    , red : Upgraded Red.Model Red.Msg
-    , poop : Upgraded Poop.Model Poop.Msg
-    }
-pages =
-    { home = Home.page |> upgrade Home__Model Home__Msg
-    , red = Red.page |> upgrade Red__Model Red__Msg
-    , poop = Poop.page |> upgrade Poop__Model Poop__Msg
+    Maybe PageModel
+    ->
+        { home : Upgraded () Home.Model () Home.Msg
+        , red : Upgraded () Red.Model () Red.Msg
+        , poop : Upgraded () Poop.Model () Poop.Msg
+        , pre : Upgraded PreLoading.Model Pre.Model PreLoading.Msg Pre.Msg
+        }
+pages previousPage =
+    { home =
+        Home.page
+            |> upgrade previousPage Home__Model Home__Msg
+    , red =
+        Red.page
+            |> upgrade previousPage Red__Model Red__Msg
+    , poop =
+        Poop.page
+            |> upgrade previousPage Poop__Model Poop__Msg
+    , pre =
+        Pre.page
+            |> upgrade previousPage Pre__Model Pre__Msg
     }
