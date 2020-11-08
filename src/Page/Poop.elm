@@ -27,11 +27,7 @@ page =
 view : Session.Data -> Skeleton.Details msg
 view _ =
     { title = "Home"
-    , header =
-        [ Skeleton.linkSegment { url = "/", text = "home" }
-        , Skeleton.linkSegment { url = "/red", text = "red" }
-        , Skeleton.linkSegment { url = "/poop", text = "poop" }
-        ]
+    , header = []
     , attrs = []
     , kids =
         Element.el

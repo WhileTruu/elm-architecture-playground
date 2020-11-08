@@ -74,6 +74,14 @@ route parser handler =
     Parser.map handler parser
 
 
+links : List Skeleton.Segment
+links =
+    [ Skeleton.linkSegment { url = "/", text = "home" }
+    , Skeleton.linkSegment { url = "/red", text = "red" }
+    , Skeleton.linkSegment { url = "/poop", text = "poop" }
+    ]
+
+
 
 -- UPDATE
 
@@ -117,16 +125,19 @@ bundle bigModel =
 view : Model -> Skeleton.Details Msg
 view model =
     let
-        bundledModel =
+        bundle_ : Bundle
+        bundle_ =
             bundle model
 
+        addSheet : Skeleton.Details Msg -> Skeleton.Details Msg
         addSheet =
-            bundledModel.sheet ()
+            bundle_.sheet ()
                 |> Maybe.map (addSheetToSkeleton model)
                 |> Maybe.withDefault identity
     in
-    bundledModel.view ()
+    bundle_.view ()
         |> addSheet
+        |> (\a -> { a | header = links ++ a.header })
 
 
 addSheetToSkeleton : Model -> Page.Sheet Model msg -> Skeleton.Details msg -> Skeleton.Details msg
