@@ -1,5 +1,5 @@
 module Skeleton exposing
-    ( Config(..)
+    ( Config
     , Segment
     , linkSegment
     , map
@@ -8,6 +8,7 @@ module Skeleton exposing
 
 import Browser
 import Element exposing (Element)
+import Element.Background
 import Html exposing (..)
 
 
@@ -15,14 +16,13 @@ import Html exposing (..)
 -- NODE
 
 
-type Config msg
-    = Details
-        { title : String
-        , header : List Segment
-        , attrs : List (Element.Attribute msg)
-        , kids : Element msg
-        }
-    | Loading
+type alias Config msg =
+    { title : String
+    , header : List Segment
+    , attrs : List (Element.Attribute msg)
+    , kids : Element msg
+    , isLoading : Bool
+    }
 
 
 
@@ -44,68 +44,63 @@ linkSegment =
 
 view : (a -> msg) -> Config a -> Browser.Document msg
 view toMsg config =
-    case config of
-        Details details ->
-            { title = details.title
-            , body = [ body config |> Html.map toMsg ]
-            }
-
-        Loading ->
-            { title = "Loading"
-            , body = [ body config |> Html.map toMsg ]
-            }
+    { title = config.title
+    , body = [ body config |> Html.map toMsg ]
+    }
 
 
 body : Config msg -> Html msg
 body config =
-    case config of
-        Details details ->
-            Element.layout
-                ([ Element.width Element.fill
-                 , Element.height Element.fill
-                 ]
-                    ++ details.attrs
-                )
-                (Element.column
-                    [ Element.width Element.fill
-                    , Element.height Element.fill
-                    ]
-                    [ viewHeader details.header
-                    , details.kids
-                    , viewFooter
-                    ]
-                )
-
-        Loading ->
-            Element.layout
-                [ Element.width Element.fill
-                , Element.height Element.fill
-                ]
-                (Element.text "LOADING")
+    Element.layout
+        ([ Element.width Element.fill
+         , Element.height Element.fill
+         ]
+            ++ config.attrs
+        )
+        (Element.column
+            [ Element.width Element.fill
+            , Element.height Element.fill
+            ]
+            [ viewHeader config.isLoading config.header
+            , config.kids
+            , viewFooter
+            ]
+        )
 
 
 map : (a -> msg) -> Config a -> Config msg
 map toMsg config =
-    case config of
-        Details details ->
-            Details
-                { title = details.title
-                , header = details.header
-                , attrs = details.attrs |> List.map (Element.mapAttribute toMsg)
-                , kids = details.kids |> Element.map toMsg
-                }
-
-        Loading ->
-            Loading
+    { title = config.title
+    , header = config.header
+    , attrs = config.attrs |> List.map (Element.mapAttribute toMsg)
+    , kids = config.kids |> Element.map toMsg
+    , isLoading = config.isLoading
+    }
 
 
 
 -- VIEW HEADER
 
 
-viewHeader : List Segment -> Element msg
-viewHeader segments =
-    Element.row [ Element.padding 10 ]
+viewHeader : Bool -> List Segment -> Element msg
+viewHeader isLoading segments =
+    let
+        loadingStyle =
+            if isLoading then
+                [ Element.below
+                    (Element.el
+                        [ Element.width Element.fill
+                        , Element.height (Element.px 10)
+                        , Element.Background.color (Element.rgb255 255 0 0)
+                        ]
+                        Element.none
+                    )
+                ]
+
+            else
+                []
+    in
+    Element.row ([ Element.padding 10, Element.width Element.fill ] ++ loadingStyle)
         (case segments of
             [] ->
                 [ Element.none ]

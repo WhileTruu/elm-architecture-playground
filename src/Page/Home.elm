@@ -1,11 +1,12 @@
-module Page.Home exposing (Model, Msg, page)
+module Page.Home exposing (PageModel, PageMsg, page, parser)
 
 import Element exposing (Element)
 import Element.Background
 import Element.Input
 import Main.Sheet as Sheet
-import Page exposing (NonLoadingPage, Page)
+import Page exposing (Page)
 import Skeleton
+import Url.Parser as Parser exposing (Parser)
 
 
 
@@ -15,10 +16,6 @@ import Skeleton
 type alias Model =
     { showSheet : Bool
     }
-
-
-type Sheet
-    = MySheet
 
 
 init : ( Model, Cmd msg )
@@ -53,16 +50,16 @@ update msg model =
 
 view : Model -> Skeleton.Config Msg
 view model =
-    Skeleton.Details
-        { title = "Home"
-        , header = []
-        , attrs = []
-        , kids = viewContent model
-        }
+    { title = "Home"
+    , header = []
+    , attrs = []
+    , kids = viewContent model
+    , isLoading = False
+    }
 
 
 viewContent : Model -> Element Msg
-viewContent model =
+viewContent _ =
     Element.column
         [ Element.width Element.fill
         , Element.height Element.fill
@@ -86,7 +83,7 @@ viewContent model =
 
 
 sheetView : Model -> Sheet.Details Msg
-sheetView model =
+sheetView _ =
     { attrs =
         [ Element.width (Element.px 500)
         , Element.height (Element.px 500)
@@ -114,6 +111,12 @@ sheetView model =
                 , Element.padding 20
                 ]
                 { url = "/", label = Element.text "home" }
+            , Element.link
+                [ Element.Background.color (Element.rgb255 255 255 0)
+                , Element.focused [ Element.Background.color (Element.rgb255 255 0 0) ]
+                , Element.padding 20
+                ]
+                { url = "/pre", label = Element.text "show me a kanye quote" }
             ]
     }
 
@@ -131,7 +134,20 @@ subscriptions _ =
 -- PAGE
 
 
-page : NonLoadingPage Model Msg
+parser : Parser a a
+parser =
+    Parser.top
+
+
+type alias PageModel =
+    Model
+
+
+type alias PageMsg =
+    Msg
+
+
+page : Page PageModel PageMsg
 page =
     Page.applicationWithSheet
         { init = \_ -> init
@@ -141,7 +157,7 @@ page =
         }
 
 
-sheet : Page.Sheet Model Msg
+sheet : Page.Sheet PageModel PageMsg
 sheet =
     { show = .showSheet
     , view = sheetView

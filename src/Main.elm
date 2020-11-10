@@ -2,6 +2,8 @@ module Main exposing (..)
 
 import Browser
 import Browser.Navigation as Nav
+import Element
+import Html exposing (Html)
 import Main.Page
 import Session
 import Skeleton
@@ -55,7 +57,20 @@ subscriptions model =
 
 view : Model -> Browser.Document Msg
 view model =
-    Skeleton.view PageMsg (Main.Page.view model.page)
+    Main.Page.view model.page
+        |> Maybe.map (Skeleton.view PageMsg)
+        |> Maybe.withDefault { title = "loading", body = [ loadingLayout ] }
+
+
+loadingLayout : Html msg
+loadingLayout =
+    Element.layout
+        [ Element.width Element.fill
+        , Element.height Element.fill
+        ]
+        (Element.el [ Element.centerY, Element.centerX ]
+            (Element.text "LOADING")
+        )
 
 
 
@@ -92,7 +107,7 @@ update message model =
                 ( page, pageCmd ) =
                     Main.Page.init session (Just model.page)
             in
-            ( { model | page = page }
+            ( { model | page = page, session = Main.Page.save page session }
             , Cmd.map PageMsg pageCmd
             )
 
@@ -103,7 +118,7 @@ update message model =
 
                 session : Session.Data
                 session =
-                    model.session
+                    Main.Page.save page model.session
             in
             ( { model | page = page, session = session }
             , Cmd.map PageMsg pageCmd

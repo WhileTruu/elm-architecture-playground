@@ -1,10 +1,11 @@
-module Page.Preconditions exposing (..)
+module Page.Preconditions exposing (PageModel, PageMsg, page, parser)
 
 import Element
 import Element.Font
-import Page exposing (NonLoadingPage, Page)
+import Page exposing (Page)
 import Page.Preconditions.Loading as Loading
 import Skeleton
+import Url.Parser as Parser exposing (Parser)
 
 
 
@@ -46,28 +47,41 @@ update msg model =
 
 view : Model -> Skeleton.Config msg
 view model =
-    Skeleton.Details
-        { title = "Home"
-        , header = []
-        , attrs = []
-        , kids =
-            Element.el
-                [ Element.Font.size 50
-                , Element.centerX
-                , Element.centerY
-                ]
-                (Element.paragraph
-                    [ Element.padding 20 ]
-                    [ Element.text model.kanyeQuote ]
-                )
-        }
+    { title = "Home"
+    , header = []
+    , attrs = []
+    , kids =
+        Element.el
+            [ Element.Font.size 50
+            , Element.centerX
+            , Element.centerY
+            ]
+            (Element.paragraph
+                [ Element.padding 20 ]
+                [ Element.text model.kanyeQuote ]
+            )
+    , isLoading = False
+    }
 
 
 
 -- PAGE
 
 
-page : Page Loading.Model Model Loading.Msg Msg
+parser : Parser a a
+parser =
+    Parser.s "pre"
+
+
+type alias PageModel =
+    Page.LoadedModel Model Loading.Model
+
+
+type alias PageMsg =
+    Page.LoadedMsg Msg Loading.Msg
+
+
+page : Page PageModel PageMsg
 page =
     Page.loadedApplication
         { init = init
@@ -77,5 +91,6 @@ page =
         -- loading
         , loadingInit = \_ -> Loading.init
         , loadingUpdate = Loading.update
+        , loadingView = always Nothing
         , loadingModelToData = Loading.modelToData
         }

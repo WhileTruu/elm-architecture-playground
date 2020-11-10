@@ -1,8 +1,8 @@
 module Page exposing
-    ( Page, NonLoadingPage
+    ( Page
     , Sheet
     , static, element, applicationWithSheet, loadedApplication
-    , Msg(..), Status(..)
+    , LoadedModel(..), LoadedMsg(..)
     )
 
 {-|
@@ -19,31 +19,15 @@ import Session
 import Skeleton
 
 
-type alias NonLoadingPage model msg =
-    Page () model () msg
-
-
-type alias Page loadingModel model loadingMsg msg =
-    { init :
-        Session.Data
-        -> ( Status loadingModel model, Cmd (Msg loadingMsg msg) )
-    , update :
-        Msg loadingMsg msg
-        -> Status loadingModel model
-        -> ( Status loadingModel model, Cmd (Msg loadingMsg msg) )
-    , view : model -> Skeleton.Config (Msg loadingMsg msg)
+type alias Page model msg =
+    { init : Session.Data -> ( model, Cmd msg )
+    , update : msg -> model -> ( model, Cmd msg )
+    , view : model -> Maybe (Skeleton.Config msg)
+    , subscriptions : model -> Sub msg
+    , save : model -> Session.Data -> Session.Data
+    , load : Session.Data -> model -> ( model, Cmd msg )
     , sheet : Maybe (Sheet model msg)
     }
-
-
-type Status lm m
-    = Loading lm
-    | Ok m
-
-
-type Msg lm m
-    = LoadingMsg lm
-    | OkMsg m
 
 
 type alias Sheet model msg =
@@ -53,14 +37,14 @@ type alias Sheet model msg =
     }
 
 
-static :
-    { view : Session.Data -> Skeleton.Config msg
-    }
-    -> Page loadingModel Session.Data loadingMsg msg
+static : { view : Session.Data -> Skeleton.Config msg } -> Page Session.Data msg
 static page =
-    { init = \session -> ( Ok session, Cmd.none )
+    { init = \session -> ( session, Cmd.none )
     , update = \_ model -> ( model, Cmd.none )
-    , view = page.view >> Skeleton.map OkMsg
+    , view = page.view >> Just
+    , subscriptions = \_ -> Sub.none
+    , save = always identity
+    , load = always (identity >> ignoreEffect)
     , sheet = Nothing
     }
 
@@ -70,22 +54,14 @@ element :
     , update : msg -> model -> ( model, Cmd msg )
     , view : model -> Skeleton.Config msg
     }
-    -> Page loadingModel model loadingMsg msg
+    -> Page model msg
 element page =
-    { init =
-        \session ->
-            page.init session
-                |> Tuple.mapBoth Ok (Cmd.map OkMsg)
-    , update =
-        \msg model ->
-            case ( msg, model ) of
-                ( OkMsg msg_, Ok model_ ) ->
-                    page.update msg_ model_
-                        |> Tuple.mapBoth Ok (Cmd.map OkMsg)
-
-                ( _, _ ) ->
-                    ( model, Cmd.none )
-    , view = page.view >> Skeleton.map OkMsg
+    { init = page.init
+    , update = page.update
+    , view = page.view >> Just
+    , subscriptions = \_ -> Sub.none
+    , save = always identity
+    , load = always (identity >> ignoreEffect)
     , sheet = Nothing
     }
 
@@ -96,24 +72,30 @@ applicationWithSheet :
     , view : model -> Skeleton.Config msg
     , sheet : Sheet model msg
     }
-    -> NonLoadingPage model msg
+    -> Page model msg
 applicationWithSheet page =
-    { init =
-        \session ->
-            page.init session
-                |> Tuple.mapBoth Ok (Cmd.map OkMsg)
-    , update =
-        \msg model ->
-            case ( msg, model ) of
-                ( OkMsg msg_, Ok model_ ) ->
-                    page.update msg_ model_
-                        |> Tuple.mapBoth Ok (Cmd.map OkMsg)
-
-                ( _, _ ) ->
-                    ( model, Cmd.none )
-    , view = page.view >> Skeleton.map OkMsg
+    { init = page.init
+    , update = page.update
+    , view = page.view >> Just
+    , subscriptions = \_ -> Sub.none
+    , save = always identity
+    , load = always (identity >> ignoreEffect)
     , sheet = Just page.sheet
     }
+
+
+
+-- LOADED
+
+
+type LoadedModel loaded loading
+    = LoadingModel loading
+    | SuccessModel loaded
+
+
+type LoadedMsg loaded loading
+    = LoadingMsg loading
+    | SuccessMsg loaded
 
 
 loadedApplication :
@@ -124,23 +106,25 @@ loadedApplication :
     -- loading
     , loadingInit : Session.Data -> ( loadingModel, Cmd loadingMsg )
     , loadingUpdate : loadingMsg -> loadingModel -> ( loadingModel, Cmd loadingMsg )
+    , loadingView : loadingModel -> Maybe (Skeleton.Config loadingMsg)
     , loadingModelToData : loadingModel -> Maybe data
     }
-    -> Page loadingModel model loadingMsg msg
+    -> Page (LoadedModel model loadingModel) (LoadedMsg msg loadingMsg)
 loadedApplication page =
     let
+        initIfLoaded : loadingModel -> Maybe ( LoadedModel model loading, Cmd (LoadedMsg msg a) )
         initIfLoaded loadingModel =
             page.loadingModelToData loadingModel
-                |> Maybe.map (page.init >> Tuple.mapBoth Ok (Cmd.map OkMsg))
+                |> Maybe.map (page.init >> Tuple.mapBoth SuccessModel (Cmd.map SuccessMsg))
     in
     { init =
         \session ->
             page.loadingInit session
-                |> Tuple.mapBoth Loading (Cmd.map LoadingMsg)
+                |> Tuple.mapBoth LoadingModel (Cmd.map LoadingMsg)
     , update =
         \msg model ->
             case ( msg, model ) of
-                ( LoadingMsg msg_, Loading model_ ) ->
+                ( LoadingMsg msg_, LoadingModel model_ ) ->
                     let
                         ( loadingModel, loadingCmd ) =
                             page.loadingUpdate msg_ model_
@@ -148,15 +132,30 @@ loadedApplication page =
                     initIfLoaded loadingModel
                         |> Maybe.withDefault
                             (( loadingModel, loadingCmd )
-                                |> Tuple.mapBoth Loading (Cmd.map LoadingMsg)
+                                |> Tuple.mapBoth LoadingModel (Cmd.map LoadingMsg)
                             )
 
-                ( OkMsg msg_, Ok model_ ) ->
+                ( SuccessMsg msg_, SuccessModel model_ ) ->
                     page.update msg_ model_
-                        |> Tuple.mapBoth Ok (Cmd.map OkMsg)
+                        |> Tuple.mapBoth SuccessModel (Cmd.map SuccessMsg)
 
                 ( _, _ ) ->
                     ( model, Cmd.none )
-    , view = page.view >> Skeleton.map OkMsg
+    , view =
+        \model ->
+            case model of
+                LoadingModel model_ ->
+                    page.loadingView model_ |> Maybe.map (Skeleton.map LoadingMsg)
+
+                SuccessModel model_ ->
+                    page.view model_ |> Skeleton.map SuccessMsg |> Just
+    , subscriptions = \_ -> Sub.none
+    , save = always identity
+    , load = always (identity >> ignoreEffect)
     , sheet = Nothing
     }
+
+
+ignoreEffect : model -> ( model, Cmd msg )
+ignoreEffect model =
+    ( model, Cmd.none )
