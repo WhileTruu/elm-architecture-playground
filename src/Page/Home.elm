@@ -1,10 +1,12 @@
 module Page.Home exposing (PageModel, PageMsg, page, parser)
 
+import Browser.Navigation as Navigation
 import Element exposing (Element)
 import Element.Background
 import Element.Input
 import Main.Sheet as Sheet
 import Page exposing (Page)
+import Session
 import Skeleton
 import Url.Parser as Parser exposing (Parser)
 
@@ -14,13 +16,25 @@ import Url.Parser as Parser exposing (Parser)
 
 
 type alias Model =
-    { showSheet : Bool
+    { navKey : Navigation.Key
+    , showSheet : Bool
     }
 
 
-init : ( Model, Cmd msg )
-init =
-    ( { showSheet = False }
+init : Session.Data -> ( Model, Cmd msg )
+init session =
+    let
+        route : Route
+        route =
+            Parser.parse parser session.url
+                |> Maybe.withDefault Top
+    in
+    ( case route of
+        Top ->
+            { navKey = session.key, showSheet = False }
+
+        Sheet ->
+            { navKey = session.key, showSheet = True }
     , Cmd.none
     )
 
@@ -38,10 +52,14 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         ClickedShowSheet ->
-            ( { model | showSheet = True }, Cmd.none )
+            ( model
+            , Navigation.pushUrl model.navKey "/sheet"
+            )
 
         ClickedHideSheet ->
-            ( { model | showSheet = False }, Cmd.none )
+            ( model
+            , Navigation.pushUrl model.navKey "/"
+            )
 
 
 
@@ -134,30 +152,56 @@ subscriptions _ =
 -- PAGE
 
 
-parser : Parser a a
+type Route
+    = Top
+    | Sheet
+
+
+parser : Parser (Route -> a) a
 parser =
-    Parser.top
+    Parser.oneOf
+        [ Parser.map Top Parser.top
+        , Parser.map Sheet (Parser.s "sheet")
+        ]
 
 
 type alias PageModel =
-    Model
+    Page.SheetedModel Model
 
 
 type alias PageMsg =
-    Msg
+    Page.SheetedMsg Msg
 
 
 page : Page PageModel PageMsg
 page =
-    Page.applicationWithSheet
-        { init = \_ -> init
+    Page.application
+        { init = init
         , view = view
         , update = update
-        , sheet = sheet
+        , subscriptions = always Sub.none
+        , save = always identity
+        , load =
+            \session model ->
+                let
+                    route : Route
+                    route =
+                        Parser.parse parser session.url
+                            |> Maybe.withDefault Top
+                in
+                ( case route of
+                    Top ->
+                        { model | showSheet = False }
+
+                    Sheet ->
+                        { model | showSheet = True }
+                , Cmd.none
+                )
         }
+        |> Page.withSheet sheet
 
 
-sheet : Page.Sheet PageModel PageMsg
+sheet : Page.Sheet Model Msg
 sheet =
     { show = .showSheet
     , view = sheetView

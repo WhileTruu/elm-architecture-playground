@@ -87,10 +87,12 @@ page =
         { init = init
         , update = update
         , view = view
+        , subscriptions = \_ -> Sub.none
+        , save = always identity
+        , load = \_ model -> ( model, Cmd.none )
 
         -- loading
         , loadingInit = \_ -> Loading.init
         , loadingUpdate = Loading.update
-        , loadingView = always Nothing
         , loadingModelToData = Loading.modelToData
         }

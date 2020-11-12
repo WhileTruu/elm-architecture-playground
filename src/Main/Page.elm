@@ -4,12 +4,12 @@ module Main.Page exposing
     , init
     , load
     , save
+    , stepUrl
     , subscriptions
     , update
     , view
     )
 
-import Element exposing (Element)
 import Main.Sheet as Sheet
 import Page exposing (Page, Sheet)
 import Page.Home as Home
@@ -21,60 +21,43 @@ import Url.Parser as Parser exposing (Parser, oneOf)
 
 
 
--- TODO: Previous page view cannot be interacted with while loading another
---
 -- TYPES
 
 
-type alias Model =
-    { sheet : Sheet.Model
-    , previousPage : Maybe PageModel
-    , page : PageModel
-    }
-
-
-type PageModel
+type Model
     = Home__Model Home.PageModel
     | NotFound__Model NotFound.PageModel
     | Pre__Model Pre.PageModel
 
 
-type PageMsg
+type Msg
     = Home__Msg Home.PageMsg
     | NotFound__Msg NotFound.PageMsg
     | Pre__Msg Pre.PageMsg
-
-
-type Msg
-    = Page__Msg PageMsg
-    | SheetMsg Sheet.Msg
 
 
 
 -- INIT
 
 
-parser : Session.Data -> Maybe Model -> Parser (( Model, Cmd Msg ) -> c) c
-parser session model =
-    oneOf
-        [ Parser.map (pages.home.init session) Home.parser
-        , Parser.map (pages.notFound.init session) NotFound.parser
-        , Parser.map (pages.pre.init session) Pre.parser
-        ]
-        |> Parser.map
-            (Tuple.mapFirst
-                (\a ->
-                    { a
-                        | sheet = Maybe.map .sheet model |> Maybe.withDefault Sheet.init
-                        , previousPage = Maybe.map .page model
-                    }
-                )
-            )
+init : Session.Data -> ( Model, Cmd Msg )
+init session =
+    stepUrl session
+        (Tuple.first (pages.notFound.init session))
 
 
-init : Session.Data -> Maybe Model -> ( Model, Cmd Msg )
-init session prevModel =
-    case Parser.parse (parser session prevModel) session.url of
+stepUrl : Session.Data -> Model -> ( Model, Cmd Msg )
+stepUrl ({ url } as session) model =
+    let
+        parser : Parser (( Model, Cmd Msg ) -> c) c
+        parser =
+            oneOf
+                [ Parser.map (\_ -> stepHome session model) Home.parser
+                , Parser.map (stepNotFound session model) NotFound.parser
+                , Parser.map (stepPre session model) Pre.parser
+                ]
+    in
+    case Parser.parse parser url of
         Just answer ->
             answer
 
@@ -90,34 +73,51 @@ links =
     ]
 
 
+stepHome : Session.Data -> Model -> ( Model, Cmd Msg )
+stepHome session model =
+    case model of
+        Home__Model _ ->
+            load model session
+
+        _ ->
+            pages.home.init session
+
+
+stepPre : Session.Data -> Model -> ( Model, Cmd Msg )
+stepPre session model =
+    case model of
+        Pre__Model _ ->
+            load model session
+
+        _ ->
+            pages.pre.init session
+
+
+stepNotFound : Session.Data -> Model -> ( Model, Cmd Msg )
+stepNotFound session model =
+    case model of
+        NotFound__Model _ ->
+            load model session
+
+        _ ->
+            pages.notFound.init session
+
+
 
 -- UPDATE
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update bigMsg model =
-    case bigMsg of
-        Page__Msg msg ->
-            updatePage msg model
-
-        SheetMsg msg ->
-            ( { model | sheet = Sheet.update msg model.sheet }, Cmd.none )
-
-
-updatePage : PageMsg -> Model -> ( Model, Cmd Msg )
-updatePage bigMsg bigModel =
-    case ( bigMsg, bigModel.page ) of
+update bigMsg bigModel =
+    case ( bigMsg, bigModel ) of
         ( Home__Msg msg, Home__Model model ) ->
-            pages.home.update msg model bigModel.sheet
-                |> Tuple.mapFirst (\a -> { a | previousPage = bigModel.previousPage })
+            pages.home.update msg model
 
         ( NotFound__Msg msg, NotFound__Model model ) ->
-            pages.notFound.update msg model bigModel.sheet
-                |> Tuple.mapFirst (\a -> { a | previousPage = bigModel.previousPage })
+            pages.notFound.update msg model
 
         ( Pre__Msg msg, Pre__Model model ) ->
-            pages.pre.update msg model bigModel.sheet
-                |> Tuple.mapFirst (\a -> { a | previousPage = bigModel.previousPage })
+            pages.pre.update msg model
 
         ( _, _ ) ->
             ( bigModel, Cmd.none )
@@ -127,7 +127,7 @@ updatePage bigMsg bigModel =
 -- BUNDLE - (view + subscriptions)
 
 
-bundle : PageModel -> Bundle
+bundle : Model -> Bundle
 bundle bigModel =
     case bigModel of
         Home__Model model ->
@@ -140,73 +140,25 @@ bundle bigModel =
             pages.pre.bundle model
 
 
-view : Model -> Maybe (Skeleton.Config Msg)
+view : Model -> Skeleton.Config Msg
 view model =
-    let
-        bundledPage : Bundle
-        bundledPage =
-            bundle model.page
-
-        addSheet : Skeleton.Config Msg -> Skeleton.Config Msg
-        addSheet =
-            bundledPage.sheet ()
-                |> Maybe.map (addSheetToSkeleton model)
-                |> Maybe.withDefault identity
-    in
-    bundledPage.view ()
-        |> orElse (Maybe.andThen (previousView model) model.previousPage)
-        |> Maybe.map addSheet
-        |> Maybe.map (\config -> { config | header = links ++ config.header })
-
-
-previousView : Model -> PageModel -> Maybe (Skeleton.Config Msg)
-previousView model page =
-    let
-        bundledPage : Bundle
-        bundledPage =
-            bundle page
-
-        addSheet : Skeleton.Config Msg -> Skeleton.Config Msg
-        addSheet =
-            bundledPage.sheet ()
-                |> Maybe.map (addSheetToSkeleton model)
-                |> Maybe.withDefault identity
-    in
-    bundledPage.view ()
-        |> Maybe.map (\config -> { config | isLoading = True })
-        |> Maybe.map addSheet
-
-
-addSheetToSkeleton : Model -> Page.Sheet Model msg -> Skeleton.Config msg -> Skeleton.Config msg
-addSheetToSkeleton model sheet config =
-    let
-        sheetView : Element.Element msg
-        sheetView =
-            if Sheet.isVisible model.sheet then
-                Sheet.view model.sheet (sheet.view model) { onClose = sheet.onHide }
-
-            else
-                Element.none
-    in
-    { config | attrs = Element.inFront sheetView :: config.attrs }
+    (bundle model).view ()
+        |> (\config -> { config | header = links ++ config.header })
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.batch
-        [ (bundle model.page).subscriptions ()
-        , Sheet.subscriptions model.sheet |> Sub.map SheetMsg
-        ]
+    (bundle model).subscriptions ()
 
 
 save : Model -> Session.Data -> Session.Data
 save model =
-    (bundle model.page).save ()
+    (bundle model).save ()
 
 
 load : Model -> Session.Data -> ( Model, Cmd Msg )
 load model session =
-    (bundle model.page).load () session model.sheet
+    (bundle model).load () session
 
 
 
@@ -215,85 +167,41 @@ load model session =
 
 type alias Upgraded model msg =
     { init : Session.Data -> ( Model, Cmd Msg )
-    , update : msg -> model -> Sheet.Model -> ( Model, Cmd Msg )
+    , update : msg -> model -> ( Model, Cmd Msg )
     , bundle : model -> Bundle
     }
 
 
 type alias Bundle =
-    { view : () -> Maybe (Skeleton.Config Msg)
+    { view : () -> Skeleton.Config Msg
     , subscriptions : () -> Sub Msg
     , save : () -> Session.Data -> Session.Data
-    , load : () -> Session.Data -> Sheet.Model -> ( Model, Cmd Msg )
-    , sheet : () -> Maybe (Page.Sheet Model Msg)
+    , load : () -> Session.Data -> ( Model, Cmd Msg )
     }
 
 
-upgrade : (model -> PageModel) -> (msg -> PageMsg) -> Page model msg -> Upgraded model msg
-upgrade toPageModel toPageMsg page =
+upgrade : (model -> Model) -> (msg -> Msg) -> Page model msg -> Upgraded model msg
+upgrade toModel toMsg page =
     let
-        toMsg : msg -> Msg
-        toMsg =
-            toPageMsg >> Page__Msg
-
-        toModel : Sheet.Model -> model -> Model
-        toModel sheetModel =
-            toPageModel
-                >> (\pageModel ->
-                        { sheet = sheetModel
-                        , previousPage = Nothing
-                        , page = pageModel
-                        }
-                   )
-
         init_ : Session.Data -> ( Model, Cmd Msg )
         init_ session =
-            page.init session
-                |> Tuple.mapBoth (toModel Sheet.init) (Cmd.map toMsg)
+            page.init session |> Tuple.mapBoth toModel (Cmd.map toMsg)
 
-        update_ : msg -> model -> Sheet.Model -> ( Model, Cmd Msg )
-        update_ msg model sheetModel =
-            page.update msg model
-                |> Tuple.mapFirst (\a -> toModel (updateSheet sheetModel a) a)
-                |> Tuple.mapSecond (Cmd.map toMsg)
-
-        updateSheet : Sheet.Model -> model -> Sheet.Model
-        updateSheet sheet model =
-            let
-                showSheet : model -> Bool
-                showSheet =
-                    page.sheet |> Maybe.map .show |> Maybe.withDefault (always False)
-            in
-            if showSheet model then
-                Sheet.show sheet
-
-            else
-                Sheet.hide sheet
+        update_ : msg -> model -> ( Model, Cmd Msg )
+        update_ msg model =
+            page.update msg model |> Tuple.mapBoth toModel (Cmd.map toMsg)
 
         bundle_ : model -> Bundle
         bundle_ model =
-            { view = \_ -> page.view model |> Maybe.map (Skeleton.map toMsg)
+            { view = \_ -> page.view model |> Skeleton.map toMsg
             , subscriptions = \_ -> page.subscriptions model |> Sub.map toMsg
             , save = \_ -> page.save model
             , load = \_ -> load_ model
-            , sheet = \_ -> sheet_ model
             }
 
-        load_ : model -> Session.Data -> Sheet.Model -> ( Model, Cmd Msg )
-        load_ model shared sheetModel =
-            page.load shared model
-                |> Tuple.mapBoth (toModel sheetModel) (Cmd.map toMsg)
-
-        sheet_ : model -> Maybe (Page.Sheet Model Msg)
-        sheet_ model =
-            Maybe.map (sheetToModelSheet model) page.sheet
-
-        sheetToModelSheet : model -> Page.Sheet model msg -> Page.Sheet Model Msg
-        sheetToModelSheet model sheet =
-            { show = \_ -> sheet.show model
-            , view = \_ -> sheet.view model |> Sheet.map toMsg
-            , onHide = toMsg sheet.onHide
-            }
+        load_ : model -> Session.Data -> ( Model, Cmd Msg )
+        load_ model shared =
+            page.load shared model |> Tuple.mapBoth toModel (Cmd.map toMsg)
     in
     { init = init_
     , update = update_
